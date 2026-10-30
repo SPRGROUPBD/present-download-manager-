@@ -102,8 +102,9 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
     if (!Platform.isAndroid || _startAppBannerLoading || _startAppBanner != null) return;
     _startAppBannerLoading = true;
     try {
-      await _startAppSdk.setTestAdsEnabled(false);
-      debugPrint('Start.io test mode enabled');
+      // Production is the SDK default. Do not toggle test mode at runtime.
+      // The Start.io App ID is injected into AndroidManifest by the build workflow.
+      debugPrint('Requesting Start.io production banner...');
       final ad = await _startAppSdk.loadBannerAd(
         StartAppBannerType.BANNER,
         onAdImpression: () => debugPrint('Start.io banner impression received'),
@@ -117,7 +118,8 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
       _startAppRetryTimer?.cancel();
       debugPrint('Start.io banner loaded successfully');
     } catch (error, stackTrace) {
-      debugPrint('Start.io banner load failed: $error');
+      debugPrint('Start.io production banner load failed: $error');
+      debugPrint('Start.io SDK version: ${await _startAppSdk.getSdkVersion()}');
       debugPrint('$stackTrace');
       _scheduleStartAppRetry();
     } finally {
@@ -414,7 +416,12 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
         ],
       ),
       bottomNavigationBar: Platform.isAndroid && _startAppBanner != null
-          ? SafeArea(child: Center(child: StartAppBanner(_startAppBanner!)))
+          ? SafeArea(
+              child: SizedBox(
+                width: double.infinity,
+                child: Center(child: StartAppBanner(_startAppBanner!)),
+              ),
+            )
           : null,
       body: Center(
         child: ConstrainedBox(
