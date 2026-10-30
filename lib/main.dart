@@ -80,6 +80,47 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
     return 'download_${DateTime.now().millisecondsSinceEpoch}.bin';
   }
 
+  bool _isSocialVideoPage(Uri uri) {
+    final host = uri.host.toLowerCase().replaceFirst(RegExp(r'^www\\.'), '');
+    return host == 'youtube.com' || host.endsWith('.youtube.com') ||
+        host == 'youtu.be' || host == 'facebook.com' ||
+        host.endsWith('.facebook.com') || host == 'fb.watch' ||
+        host == 'tiktok.com' || host.endsWith('.tiktok.com') ||
+        host == 'instagram.com' || host.endsWith('.instagram.com');
+  }
+
+  Future<Response<ResponseBody>> _requestWithRetry(
+    String url,
+    CancelToken? cancelToken,
+  ) async {
+    DioException? lastError;
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        return await _dio.get<ResponseBody>(
+          url,
+          cancelToken: cancelToken,
+          options: Options(
+            responseType: ResponseType.stream,
+            followRedirects: true,
+            receiveTimeout: const Duration(minutes: 0),
+            sendTimeout: const Duration(seconds: 30),
+            headers: {'User-Agent': 'PresentDownloadManager/1.2.2'},
+          ),
+        );
+      } on DioException catch (e) {
+        lastError = e;
+        final retryable = e.type == DioExceptionType.connectionError ||
+            e.type == DioExceptionType.connectionTimeout ||
+            e.type == DioExceptionType.receiveTimeout;
+        if (!retryable || attempt == 3 || cancelToken?.isCancelled == true) {
+          rethrow;
+        }
+        await Future.delayed(Duration(seconds: attempt * 2));
+      }
+    }
+    throw lastError ?? Exception('নেটওয়ার্ক সংযোগ ব্যর্থ হয়েছে।');
+  }
+
   Future<void> _startDownload() async {
     final url = _urlController.text.trim();
     final uri = Uri.tryParse(url);
@@ -87,6 +128,10 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
         (uri.scheme != 'http' && uri.scheme != 'https') ||
         uri.host.isEmpty) {
       _showMessage('একটি সঠিক HTTP/HTTPS ডাউনলোড লিংক দিন।');
+      return;
+    }
+    if (_isSocialVideoPage(uri)) {
+      _showMessage('এটি YouTube/Facebook/TikTok-এর পেজ লিংক। সরাসরি ভিডিও ফাইলের MP4/WebM লিংক দিন অথবা প্ল্যাটফর্মের নিজস্ব Download/Save সুবিধা ব্যবহার করুন।');
       return;
     }
     final item = DownloadItem(url: url, fileName: _fileNameFromUrl(url));
@@ -118,16 +163,8 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
     String? path;
     try {
       final uri = Uri.parse(item.url);
-      // Resolve the host first so DNS failures can be explained clearly.
-      try {
-        await InternetAddress.lookup(uri.host)
-            .timeout(const Duration(seconds: 12));
-      } on SocketException {
-        throw Exception('DNS সমস্যার কারণে ${uri.host} সার্ভার খুঁজে পাওয়া যাচ্ছে না। ইন্টারনেট/DNS পরীক্ষা করে আবার চেষ্টা করুন।');
-      } on TimeoutException {
-        throw Exception('সার্ভারের DNS উত্তর দিতে দেরি হচ্ছে। নেটওয়ার্ক পরীক্ষা করে আবার চেষ্টা করুন।');
-      }
-
+      // Do not pre-resolve DNS here. Let the HTTP client use Android/Windows network DNS.
+      // The previous extra lookup could fail before the actual HTTP request was attempted.
       final directory = await getApplicationDocumentsDirectory();
       final downloads = Directory('${directory.path}${Platform.pathSeparator}Downloads');
       if (!await downloads.exists()) {
@@ -135,17 +172,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
       }
       final safeName = item.fileName.replaceAll(RegExp(r'[<>:"/\\\\|?*]'), '_');
       path = '${downloads.path}${Platform.pathSeparator}$safeName';
-      final response = await _dio.get<ResponseBody>(
-        item.url,
-        cancelToken: item.cancelToken,
-        options: Options(
-          responseType: ResponseType.stream,
-          followRedirects: true,
-          receiveTimeout: const Duration(minutes: 0),
-          sendTimeout: const Duration(seconds: 30),
-          headers: {'User-Agent': 'PresentDownloadManager/1.2.1'},
-        ),
-      );
+      final response = await _requestWithRetry(item.url, item.cancelToken);
       final body = response.data;
       if (body == null) throw Exception('সার্ভার থেকে কোনো ডেটা পাওয়া যায়নি।');
       item.total = int.tryParse(
@@ -244,9 +271,9 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
             onPressed: () => showAboutDialog(
               context: context,
               applicationName: 'Present Download Manager',
-              applicationVersion: '1.2.1',
+              applicationVersion: '1.2.2',
               children: const [
-                Text('Cross-platform HTTP/HTTPS download manager starter.'),
+                Text('HTTP/HTTPS file downloader with retry and direct video-file URL support.'),
               ],
             ),
             icon: const Icon(Icons.info_outline),
@@ -274,7 +301,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
                           keyboardType: TextInputType.url,
                           decoration: const InputDecoration(
                             hintText: 'https://example.com/file.zip',
-                            labelText: 'Download URL',
+                            labelText: 'Download / Video URL',
                             border: OutlineInputBorder(),
                             prefixIcon: Icon(Icons.link),
                           ),
@@ -288,7 +315,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
                         ),
                         const SizedBox(height: 6),
                         const Text(
-                          'এই সংস্করণে HTTP/HTTPS ফাইল ডাউনলোডের প্রাথমিক সুবিধা রয়েছে।',
+                          'HTTP/HTTPS ফাইল এবং সরাসরি MP4/WebM/MOV ভিডিও ফাইল ডাউনলোড করুন।',
                           style: TextStyle(fontSize: 12),
                         ),
                       ],
