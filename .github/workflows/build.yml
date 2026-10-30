@@ -26,6 +26,42 @@ jobs:
           channel: stable
       - name: Generate Android project
         run: flutter create --platforms=android .
+      - name: Set Android compile SDK to 36 for Start.io
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          candidates = [
+              Path("android/app/build.gradle.kts"),
+              Path("android/app/build.gradle"),
+          ]
+          gradle_file = next((p for p in candidates if p.exists()), None)
+          if gradle_file is None:
+              raise SystemExit("Android app Gradle file not found")
+
+          content = gradle_file.read_text(encoding="utf-8")
+          updated, count = re.subn(
+              r"compileSdk\s*=\s*flutter\.compileSdkVersion",
+              "compileSdk = 36",
+              content,
+          )
+          if count == 0:
+              updated, count = re.subn(
+                  r"compileSdkVersion\s+flutter\.compileSdkVersion",
+                  "compileSdkVersion 36",
+                  content,
+              )
+          if count == 0:
+              if re.search(r"compileSdk\s*=\s*36|compileSdkVersion\s+36", content):
+                  print("Android compile SDK is already 36")
+              else:
+                  raise SystemExit("Could not safely update Android compileSdk")
+          else:
+              gradle_file.write_text(updated, encoding="utf-8")
+              print(f"Set {gradle_file} compileSdk to 36")
+          PY
       - name: Ensure Android Internet permission
         shell: bash
         run: |
