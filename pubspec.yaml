@@ -1,7 +1,7 @@
 name: present_download_manager
 description: Present Download Manager - cross-platform download manager starter.
 publish_to: 'none'
-version: 1.4.0+14
+version: 1.4.1+15
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
@@ -13,8 +13,6 @@ dependencies:
   path_provider: ^2.1.5
   startapp_sdk: ^1.0.1
   unity_ads_plugin: ^0.5.0
-  libtorrent_flutter: 1.9.9
-  file_picker: ^8.1.7
 
 dev_dependencies:
   flutter_test:
