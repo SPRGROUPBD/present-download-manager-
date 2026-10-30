@@ -302,7 +302,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
       }
       final appDir = await getApplicationDocumentsDirectory();
       final saveDir = Directory('${appDir.path}${Platform.pathSeparator}Downloads');
-      final id = LibtorrentFlutter.instance.addTorrentFile(result.files.single.path!, saveDir.path);
+      final id = LibtorrentFlutter.instance.addTorrentFile(result.files.single.path!);
       _activeFilter = 'Torrent';
       _showMessage('.torrent ফাইল যোগ হয়েছে (ID: $id)');
       if (mounted) setState(() {});
