@@ -91,6 +91,26 @@ jobs:
           PY
       - name: Get dependencies
         run: flutter pub get
+      - name: Set Start.io Android library compile SDK to 36
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          pub_cache = Path.home() / ".pub-cache" / "hosted" / "pub.dev"
+          candidates = list(pub_cache.glob("startapp_sdk-*/android/build.gradle")) + list(pub_cache.glob("startapp_sdk-*/android/build.gradle.kts"))
+          if not candidates:
+              raise SystemExit("Start.io Android Gradle file not found in Pub cache")
+          for gradle_file in candidates:
+              content = gradle_file.read_text(encoding="utf-8")
+              updated, count = re.subn(r"(compileSdkVersion\\s+|compileSdk\\s*=\\s*)\\d+", r"\\g<1>36", content)
+              if count == 0 and not re.search(r"compileSdkVersion\\s+36|compileSdk\\s*=\\s*36", content):
+                  raise SystemExit(f"Could not safely set compileSdk in {gradle_file}")
+              if count:
+                  gradle_file.write_text(updated, encoding="utf-8")
+              print(f"Start.io library compileSdk set to 36: {gradle_file}")
+          PY
       - name: Build release APK
         run: flutter build apk --release
       - name: Upload APK artifact
