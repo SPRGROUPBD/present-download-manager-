@@ -77,6 +77,8 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
   String _unityAdStatus = 'Unity Ads চালু হচ্ছে…';
   String? _unityAdError;
   String _lastAdEvent = 'এখনো কোনো বিজ্ঞাপন ইভেন্ট পাওয়া যায়নি';
+  String _activeFilter = 'All';
+  DownloadItem? _selectedItem;
 
   void _recordAdEvent(String message) {
     if (!mounted) return;
@@ -449,205 +451,327 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
+
   @override
   Widget build(BuildContext context) {
+    final activeCount = _items.where((e) => e.status == DownloadStatus.downloading).length;
+    final completedCount = _items.where((e) => e.status == DownloadStatus.completed).length;
+    final visibleItems = _items.where((e) {
+      if (_activeFilter == 'Active') return e.status == DownloadStatus.downloading;
+      if (_activeFilter == 'Completed') return e.status == DownloadStatus.completed;
+      return true;
+    }).toList();
+    final wide = MediaQuery.of(context).size.width >= 700;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Present Download Manager'),
-        centerTitle: false,
         actions: [
           IconButton(
             tooltip: 'About',
+            icon: const Icon(Icons.info_outline),
             onPressed: () => showAboutDialog(
               context: context,
               applicationName: 'Present Download Manager',
-              applicationVersion: '1.3.5',
-              children: const [
-                Text('HTTP/HTTPS file downloader with retry and direct video-file URL support.'),
-              ],
+              applicationVersion: '1.3.7',
+              children: const [Text('Cross-platform file download manager.')],
             ),
-            icon: const Icon(Icons.info_outline),
+          ),
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'ads') {
+                showModalBottomSheet<void>(
+                  context: context,
+                  builder: (_) => SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('Start.io: $_startAppAdStatus'),
+                        if (_startAppAdError != null) SelectableText(_startAppAdError!),
+                        const SizedBox(height: 8),
+                        Text('Unity Ads: $_unityAdStatus'),
+                        if (_unityAdError != null) SelectableText(_unityAdError!),
+                        const SizedBox(height: 8),
+                        SelectableText(_lastAdEvent),
+                      ]),
+                    ),
+                  ),
+                );
+              }
+            },
+            itemBuilder: (_) => const [PopupMenuItem(value: 'ads', child: Text('Ad Diagnostics'))],
           ),
         ],
       ),
-      bottomNavigationBar: Platform.isAndroid
-          ? SafeArea(
-              child: Container(
-                constraints: const BoxConstraints(minHeight: 56),
-                width: double.infinity,
-                alignment: Alignment.center,
-                child: _startAppBanner != null
-                    ? StartAppBanner(_startAppBanner!)
-                    : Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.ads_click, size: 16),
-                            const SizedBox(width: 8),
-                            Flexible(child: Text(_startAppAdStatus, style: const TextStyle(fontSize: 12), textAlign: TextAlign.center)),
-                            const SizedBox(width: 8),
-                            TextButton(onPressed: _startAppBannerLoading ? null : _loadStartAppBanner, child: const Text('Retry')),
-                          ],
-                        ),
-                      ),
+      body: Column(
+        children: [
+          // FDM-inspired dark action toolbar
+          Container(
+            height: 62,
+            color: const Color(0xFF29364D),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(children: [
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF159BE8),
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(54, 48),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                ),
+                onPressed: _showAddDownloadDialog,
+                child: const Icon(Icons.add, size: 30),
               ),
-            )
-          : null,
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 900),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: 'Retry failed download',
+                onPressed: _busy ? null : _retryFirstFailed,
+                color: Colors.white,
+                icon: const Icon(Icons.play_arrow, size: 30),
+              ),
+              IconButton(
+                tooltip: 'Pause / Cancel active download',
+                onPressed: _cancelFirstActive,
+                color: Colors.white,
+                icon: const Icon(Icons.pause, size: 27),
+              ),
+              const Spacer(),
+              IconButton(
+                tooltip: 'About',
+                onPressed: () => showAboutDialog(context: context, applicationName: 'Present Download Manager', applicationVersion: '1.3.7'),
+                color: Colors.white,
+                icon: const Icon(Icons.info_outline),
+              ),
+            ]),
+          ),
+          // Download category tabs
+          SizedBox(
+            height: 48,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
               children: [
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Text('নতুন ডাউনলোড', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 10),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _urlController,
-                                keyboardType: TextInputType.url,
-                                minLines: 1,
-                                maxLines: 2,
-                                decoration: const InputDecoration(
-                                  hintText: 'https://example.com/file.zip',
-                                  labelText: 'এখানে Download URL পেস্ট করুন',
-                                  border: OutlineInputBorder(),
-                                  prefixIcon: Icon(Icons.link),
-                                ),
-                                onSubmitted: (_) => _startDownload(),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            SizedBox(
-                              height: 56,
-                              child: OutlinedButton.icon(
-                                onPressed: _pasteUrl,
-                                icon: const Icon(Icons.content_paste, size: 18),
-                                label: const Text('Paste'),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        SizedBox(
-                          height: 48,
-                          child: FilledButton.icon(
-                            onPressed: _busy ? null : _startDownload,
-                            icon: const Icon(Icons.download),
-                            label: const Text('Download Now'),
-                          ),
-                        ),
-                        if (Platform.isAndroid) ...[
-                          const SizedBox(height: 12),
-                          ExpansionTile(
-                            tilePadding: EdgeInsets.zero,
-                            initiallyExpanded: false,
-                            leading: const Icon(Icons.monitor_heart_outlined),
-                            title: const Text('Ad Status / Diagnostics'),
-                            subtitle: const Text('Start.io ও Unity Ads-এর অবস্থা'),
-                            children: [
-                              Align(alignment: Alignment.centerLeft, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                Text('Start.io: $_startAppAdStatus', style: const TextStyle(fontWeight: FontWeight.w600)),
-                                if (_startAppAdError != null) SelectableText('Start.io Error: $_startAppAdError', style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12)),
-                                const SizedBox(height: 8),
-                                Text('Unity Ads: $_unityAdStatus', style: const TextStyle(fontWeight: FontWeight.w600)),
-                                if (_unityAdError != null) SelectableText('Unity Error: $_unityAdError', style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12)),
-                                const SizedBox(height: 8),
-                                const Text('সর্বশেষ বিজ্ঞাপন ইভেন্ট:', style: TextStyle(fontWeight: FontWeight.w600)),
-                                SelectableText(_lastAdEvent, style: const TextStyle(fontSize: 12)),
-                                const SizedBox(height: 8),
-                                Text('Unity Interstitial: প্রতি ৩টি সফল ডাউনলোডের পর দেখানোর চেষ্টা হবে।', style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                              ])),
-                            ],
-                          ),
-                        ],
-                        const SizedBox(height: 6),
-                        const Text(
-                          'HTTP/HTTPS ফাইল এবং সরাসরি MP4/WebM/MOV ভিডিও ফাইল ডাউনলোড করুন।',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    const Expanded(child: Text('ডাউনলোড তালিকা', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-                    Text('${_items.length} টি'),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: _items.isEmpty
-                      ? const Center(child: Text('এখনো কোনো ডাউনলোড নেই।'))
-                      : ListView.separated(
-                          itemCount: _items.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
-                          itemBuilder: (context, index) {
-                            final item = _items[index];
-                            return Card(
-                              child: Padding(
-                                padding: const EdgeInsets.all(14),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.insert_drive_file_outlined),
-                                        const SizedBox(width: 8),
-                                        Expanded(child: Text(item.fileName, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                                        Text(_statusText(item)),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    LinearProgressIndicator(value: item.total > 0 ? item.progress : null),
-                                    const SizedBox(height: 6),
-                                    Row(
-                                      children: [
-                                        Expanded(child: Text('${_size(item.received)} / ${_size(item.total)}')),
-                                        if (item.status == DownloadStatus.downloading)
-                                          TextButton.icon(
-                                            onPressed: () => _cancel(item),
-                                            icon: const Icon(Icons.close),
-                                            label: const Text('বাতিল'),
-                                          )
-                                        else if (item.status == DownloadStatus.failed ||
-                                            item.status == DownloadStatus.cancelled)
-                                          TextButton.icon(
-                                            onPressed: _busy ? null : () => _retryDownload(item),
-                                            icon: const Icon(Icons.refresh),
-                                            label: const Text('আবার চেষ্টা'),
-                                          ),
-                                      ],
-                                    ),
-                                    if (item.savedPath != null)
-                                      SelectableText('সংরক্ষিত: ${item.savedPath}', style: const TextStyle(fontSize: 11)),
-                                    if (item.error != null)
-                                      Text(item.error!, style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12)),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                ),
+                _buildCategoryTab('All (${_items.length})', 'All'),
+                _buildCategoryTab('Active ($activeCount)', 'Active'),
+                _buildCategoryTab('Completed ($completedCount)', 'Completed'),
+                _buildCategoryTab('Torrent', 'Torrent'),
+                _buildCategoryTab('YouTube', 'YouTube'),
+                _buildCategoryTab('Video', 'Video'),
+                _buildCategoryTab('Music', 'Music'),
               ],
             ),
           ),
-        ),
+          Expanded(
+            child: Column(children: [
+              Expanded(
+                flex: wide ? 6 : 5,
+                child: _activeFilter == 'Torrent' || _activeFilter == 'YouTube'
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            _activeFilter == 'Torrent'
+                                ? 'Torrent Engine এখনো সংযুক্ত করা হয়নি। .torrent ও Magnet Link ডাউনলোড চালু করতে Torrent Engine প্রয়োজন।'
+                                : 'YouTube ডাউনলোড ইন্টিগ্রেশন এখনো সংযুক্ত করা হয়নি।',
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      )
+                    : Column(children: [
+                        Container(
+                          height: 40,
+                          color: const Color(0xFFF0F2F5),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: const Row(children: [
+                            SizedBox(width: 34, child: Icon(Icons.check_box_outline_blank, size: 18)),
+                            Expanded(flex: 5, child: Text('Name', style: TextStyle(fontWeight: FontWeight.bold))),
+                            Expanded(flex: 2, child: Text('Status', style: TextStyle(fontWeight: FontWeight.bold))),
+                            Expanded(flex: 2, child: Text('Size', style: TextStyle(fontWeight: FontWeight.bold))),
+                          ]),
+                        ),
+                        Expanded(
+                          child: visibleItems.isEmpty
+                              ? const Center(child: Text('কোনো ডাউনলোড নেই। + বাটনে চাপ দিয়ে URL যোগ করুন।'))
+                              : ListView.separated(
+                                  itemCount: visibleItems.length,
+                                  separatorBuilder: (_, __) => const Divider(height: 1),
+                                  itemBuilder: (context, index) {
+                                    final item = visibleItems[index];
+                                    return Material(
+                                      color: identical(_selectedItem, item) ? const Color(0xFFE3F2FD) : Colors.transparent,
+                                      child: InkWell(
+                                        onTap: () => setState(() => _selectedItem = item),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                                          child: Row(children: [
+                                            const SizedBox(width: 34, child: Icon(Icons.insert_drive_file_outlined, color: Color(0xFF168DD1))),
+                                            Expanded(flex: 5, child: Text(item.fileName, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                            Expanded(
+                                              flex: 2,
+                                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                                Text(item.status == DownloadStatus.downloading ? '${(item.progress * 100).toStringAsFixed(0)}%' : _statusText(item), style: const TextStyle(fontSize: 12)),
+                                                const SizedBox(height: 4),
+                                                LinearProgressIndicator(value: item.status == DownloadStatus.completed ? 1 : item.total > 0 ? item.progress : null, minHeight: 5),
+                                              ]),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(flex: 2, child: Text('${_size(item.received)} / ${_size(item.total)}', style: const TextStyle(fontSize: 11))),
+                                          ]),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ]),
+              ),
+              // FDM-style selected-file details
+              Container(
+                height: wide ? 205 : 175,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF1F2F4),
+                  border: Border(top: BorderSide(color: Color(0xFFD5DAE2))),
+                ),
+                child: _selectedItem == null
+                    ? const Center(child: Text('বিস্তারিত দেখতে তালিকা থেকে একটি ফাইল নির্বাচন করুন'))
+                    : DefaultTabController(
+                        length: 3,
+                        child: Column(children: [
+                          const TabBar(
+                            tabs: [Tab(text: 'General'), Tab(text: 'Progress'), Tab(text: 'Connections')],
+                            labelColor: Color(0xFF168DD1),
+                            unselectedLabelColor: Colors.blueGrey,
+                          ),
+                          Expanded(
+                            child: TabBarView(children: [
+                              _buildGeneralDetails(_selectedItem!),
+                              _buildProgressDetails(_selectedItem!),
+                              Center(child: Text(_selectedItem!.status == DownloadStatus.downloading ? 'HTTP connection active' : 'No active connections')),
+                            ]),
+                          ),
+                        ]),
+                      ),
+              ),
+            ]),
+          ),
+          if (Platform.isAndroid && _startAppBanner != null)
+            SafeArea(child: SizedBox(height: 50, child: Center(child: StartAppBanner(_startAppBanner!)))),
+          Container(
+            height: 30,
+            color: const Color(0xFFE8F5E9),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(children: [Text('Active: $activeCount'), const Spacer(), Text('Completed: $completedCount')]),
+          ),
+        ],
       ),
+    );
+  }
+
+  void _showAddDownloadDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Add Download'),
+        content: TextField(
+          controller: _urlController,
+          autofocus: true,
+          keyboardType: TextInputType.url,
+          decoration: const InputDecoration(
+            labelText: 'Download URL',
+            hintText: 'https://example.com/file.zip',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close')),
+          TextButton(
+            onPressed: () async {
+              final data = await Clipboard.getData(Clipboard.kTextPlain);
+              final value = data?.text?.trim() ?? '';
+              if (value.isNotEmpty) _urlController.text = value;
+            },
+            child: const Text('Paste'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _startDownload();
+            },
+            child: const Text('Download'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _retryFirstFailed() {
+    for (final item in _items) {
+      if (item.status == DownloadStatus.failed || item.status == DownloadStatus.cancelled) {
+        _retryDownload(item);
+        return;
+      }
+    }
+  }
+
+  void _cancelFirstActive() {
+    for (final item in _items) {
+      if (item.status == DownloadStatus.downloading) {
+        _cancel(item);
+        return;
+      }
+    }
+  }
+
+  Widget _buildCategoryTab(String label, String value) {
+    final selected = _activeFilter == value;
+    return InkWell(
+      onTap: () => setState(() => _activeFilter = value),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFFE3F2FD) : const Color(0xFFF0F1F3),
+          border: selected ? const Border(bottom: BorderSide(color: Color(0xFF159BE8), width: 2)) : null,
+          borderRadius: BorderRadius.circular(3),
+        ),
+        child: Center(child: Text(label, style: TextStyle(
+          color: selected ? const Color(0xFF126DA8) : Colors.black87,
+          fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+        ))),
+      ),
+    );
+  }
+
+  Widget _buildGeneralDetails(DownloadItem item) {
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Row(children: [
+        const Icon(Icons.insert_drive_file, size: 52, color: Color(0xFF198DCE)),
+        const SizedBox(width: 14),
+        Expanded(child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(item.fileName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            LinearProgressIndicator(value: item.status == DownloadStatus.completed ? 1 : item.total > 0 ? item.progress : null, minHeight: 9),
+            const SizedBox(height: 6),
+            Text('Downloaded: ${_size(item.received)} of ${_size(item.total)}'),
+            if (item.error != null) Text(item.error!, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.red, fontSize: 11)),
+          ],
+        )),
+      ]),
+    );
+  }
+
+  Widget _buildProgressDetails(DownloadItem item) {
+    return Padding(
+      padding: const EdgeInsets.all(14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Progress: ${(item.progress * 100).toStringAsFixed(1)}%'),
+        const SizedBox(height: 10),
+        LinearProgressIndicator(value: item.status == DownloadStatus.completed ? 1 : item.total > 0 ? item.progress : null, minHeight: 10),
+        const SizedBox(height: 10),
+        Text('Downloaded: ${_size(item.received)}   Total: ${_size(item.total)}   Status: ${_statusText(item)}'),
+      ]),
     );
   }
 }
