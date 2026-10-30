@@ -4,8 +4,6 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:libtorrent_flutter/libtorrent_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:startapp_sdk/startapp.dart';
 import 'package:unity_ads_plugin/unity_ads_plugin.dart';
@@ -81,13 +79,6 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
   String _lastAdEvent = 'এখনো কোনো বিজ্ঞাপন ইভেন্ট পাওয়া যায়নি';
   String _activeFilter = 'All';
   DownloadItem? _selectedItem;
-  bool _torrentEngineReady = false;
-  bool _torrentEngineLoading = false;
-  String? _torrentEngineError;
-  Map<int, TorrentInfo> _torrentItems = {};
-  StreamSubscription<Map<int, TorrentInfo>>? _torrentSubscription;
-  final _magnetController = TextEditingController();
-
   void _recordAdEvent(String message) {
     if (!mounted) return;
     setState(() => _lastAdEvent = '${DateTime.now().toString().substring(0, 19)} — $message');
@@ -97,7 +88,6 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
   void initState() {
     super.initState();
     _initializeAds();
-    _initializeTorrentEngine();
   }
 
   Future<void> _initializeAds() async {
@@ -239,105 +229,8 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
     );
   }
 
-  Future<void> _initializeTorrentEngine() async {
-    if (_torrentEngineLoading || _torrentEngineReady) return;
-    _torrentEngineLoading = true;
-    try {
-      final appDir = await getApplicationDocumentsDirectory();
-      final saveDir = Directory('${appDir.path}${Platform.pathSeparator}Downloads');
-      if (!await saveDir.exists()) await saveDir.create(recursive: true);
-      await LibtorrentFlutter.init(
-        defaultSavePath: saveDir.path,
-        fetchTrackers: true,
-        pollInterval: const Duration(milliseconds: 1000),
-      );
-      final engine = LibtorrentFlutter.instance;
-      _torrentSubscription = engine.torrentUpdates.listen((items) {
-        if (!mounted) return;
-        setState(() => _torrentItems = Map<int, TorrentInfo>.from(items));
-      }, onError: (Object error) {
-        if (mounted) setState(() => _torrentEngineError = error.toString());
-      });
-      if (mounted) setState(() { _torrentEngineReady = true; _torrentEngineError = null; });
-    } catch (error) {
-      if (mounted) setState(() => _torrentEngineError = error.toString());
-    } finally {
-      _torrentEngineLoading = false;
-    }
-  }
-
-  Future<void> _addMagnet(String magnet) async {
-    final value = magnet.trim();
-    if (!value.startsWith('magnet:?') || !value.contains('xt=urn:btih:')) {
-      _showMessage('সঠিক Magnet Link দিন।');
-      return;
-    }
-    if (!_torrentEngineReady) {
-      await _initializeTorrentEngine();
-      if (!_torrentEngineReady) { _showMessage('Torrent Engine চালু হয়নি: ${_torrentEngineError ?? 'Unknown error'}'); return; }
-    }
-    try {
-      final appDir = await getApplicationDocumentsDirectory();
-      final saveDir = Directory('${appDir.path}${Platform.pathSeparator}Downloads');
-      final id = LibtorrentFlutter.instance.addMagnet(value, saveDir.path);
-      _magnetController.clear();
-      _activeFilter = 'Torrent';
-      _showMessage('Magnet Link যোগ হয়েছে (ID: $id)');
-      if (mounted) setState(() {});
-    } catch (error) { _showMessage('Magnet যোগ করা যায়নি: $error'); }
-  }
-
-  Future<void> _pickTorrentFile() async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['torrent'],
-        allowMultiple: false,
-        withData: false,
-      );
-      if (result == null || result.files.single.path == null) return;
-      if (!_torrentEngineReady) {
-        await _initializeTorrentEngine();
-        if (!_torrentEngineReady) { _showMessage('Torrent Engine চালু হয়নি: ${_torrentEngineError ?? 'Unknown error'}'); return; }
-      }
-      final appDir = await getApplicationDocumentsDirectory();
-      final saveDir = Directory('${appDir.path}${Platform.pathSeparator}Downloads');
-      final id = LibtorrentFlutter.instance.addTorrentFile(result.files.single.path!);
-      _activeFilter = 'Torrent';
-      _showMessage('.torrent ফাইল যোগ হয়েছে (ID: $id)');
-      if (mounted) setState(() {});
-    } catch (error) { _showMessage('Torrent ফাইল যোগ করা যায়নি: $error'); }
-  }
-
-  void _showAddTorrentDialog() {
-    showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(
-      title: const Text('Add Torrent'),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: _magnetController, minLines: 2, maxLines: 4,
-          decoration: const InputDecoration(labelText: 'Magnet Link', hintText: 'magnet:?xt=urn:btih:…', border: OutlineInputBorder())),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(onPressed: () { Navigator.pop(dialogContext); _pickTorrentFile(); },
-          icon: const Icon(Icons.file_open), label: const Text('Select .torrent file')),
-        if (_torrentEngineError != null) Text(_torrentEngineError!, style: const TextStyle(color: Colors.red, fontSize: 12)),
-      ]),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-        FilledButton(onPressed: () { final value = _magnetController.text; Navigator.pop(dialogContext); _addMagnet(value); }, child: const Text('Start Torrent')),
-      ],
-    ));
-  }
-
-  void _pauseTorrent(int id) => LibtorrentFlutter.instance.pauseTorrent(id);
-  void _resumeTorrent(int id) => LibtorrentFlutter.instance.resumeTorrent(id);
-  void _removeTorrent(int id) {
-    LibtorrentFlutter.instance.removeTorrent(id, deleteFiles: false);
-    setState(() => _torrentItems.remove(id));
-  }
-
   @override
   void dispose() {
-    _torrentSubscription?.cancel();
-    _magnetController.dispose();
     _startAppRetryTimer?.cancel();
     _unityRetryTimer?.cancel();
     _startAppBanner?.dispose();
@@ -658,7 +551,6 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
                 _buildCategoryTab('All (${_items.length})', 'All'),
                 _buildCategoryTab('Active ($activeCount)', 'Active'),
                 _buildCategoryTab('Completed ($completedCount)', 'Completed'),
-                _buildCategoryTab('Torrent', 'Torrent'),
                 _buildCategoryTab('YouTube', 'YouTube'),
                 _buildCategoryTab('Video', 'Video'),
                 _buildCategoryTab('Music', 'Music'),
@@ -669,10 +561,8 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
             child: Column(children: [
               Expanded(
                 flex: wide ? 6 : 5,
-                child: _activeFilter == 'Torrent'
-                    ? _buildTorrentPanel()
-                    : _activeFilter == 'YouTube'
-                        ? const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('YouTube page download is not supported. Use the platform-provided download/save option or a direct file URL.', textAlign: TextAlign.center)))
+                child: _activeFilter == 'YouTube'
+                    ? const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('YouTube page download is not supported. Use the platform-provided download/save option or a direct file URL.', textAlign: TextAlign.center)))
                     : Column(children: [
                         Container(
                           height: 40,
@@ -816,45 +706,6 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
         return;
       }
     }
-  }
-
-  Widget _buildTorrentPanel() {
-    final torrents = _torrentItems.entries.toList();
-    return Column(children: [
-      Padding(padding: const EdgeInsets.all(10), child: Row(children: [
-        Expanded(child: Text(_torrentEngineReady ? 'Torrent Engine: Ready' : _torrentEngineLoading ? 'Torrent Engine: Starting…' : 'Torrent Engine: Not ready', style: const TextStyle(fontWeight: FontWeight.w600))),
-        IconButton(onPressed: _initializeTorrentEngine, icon: const Icon(Icons.refresh), tooltip: 'Retry engine'),
-        FilledButton.icon(onPressed: _showAddTorrentDialog, icon: const Icon(Icons.add), label: const Text('Add Torrent')),
-      ])),
-      if (_torrentEngineError != null) Padding(padding: const EdgeInsets.all(8), child: Text(_torrentEngineError!, style: const TextStyle(color: Colors.red, fontSize: 12))),
-      Expanded(child: torrents.isEmpty ? const Center(child: Text('No torrents yet. Add a Magnet Link or .torrent file.')) : ListView.separated(
-        itemCount: torrents.length,
-        separatorBuilder: (_, __) => const Divider(height: 1),
-        itemBuilder: (context, index) {
-          final entry = torrents[index]; final t = entry.value; final id = entry.key;
-          return ListTile(
-            leading: const Icon(Icons.hub, color: Color(0xFF168DD1)),
-            title: Text(t.name.isEmpty ? 'Fetching torrent metadata…' : t.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${t.state.label} • ${(t.progress * 100).toStringAsFixed(1)}% • ↓ ${_formatRate(t.downloadRate)} • ↑ ${_formatRate(t.uploadRate)}'),
-              const SizedBox(height: 5), LinearProgressIndicator(value: t.progress.clamp(0.0, 1.0).toDouble()),
-              Text('Peers: ${t.numPeers} • Seeds: ${t.numSeeds} • ${_size(t.totalDone)} / ${_size(t.totalWanted)}', style: const TextStyle(fontSize: 11)),
-            ]),
-            trailing: PopupMenuButton<String>(onSelected: (v) {
-              if (v == 'pause') _pauseTorrent(id);
-              if (v == 'resume') _resumeTorrent(id);
-              if (v == 'remove') _removeTorrent(id);
-            }, itemBuilder: (_) => const [PopupMenuItem(value: 'pause', child: Text('Pause')), PopupMenuItem(value: 'resume', child: Text('Resume')), PopupMenuItem(value: 'remove', child: Text('Remove torrent'))]),
-          );
-        },
-      )),
-    ]);
-  }
-
-  String _formatRate(int bytesPerSecond) {
-    if (bytesPerSecond >= 1024 * 1024) return '${(bytesPerSecond / (1024 * 1024)).toStringAsFixed(1)} MB/s';
-    if (bytesPerSecond >= 1024) return '${(bytesPerSecond / 1024).toStringAsFixed(1)} KB/s';
-    return '$bytesPerSecond B/s';
   }
 
   Widget _buildCategoryTab(String label, String value) {
