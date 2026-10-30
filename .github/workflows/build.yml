@@ -35,7 +35,7 @@ jobs:
           content = manifest.read_text()
           permission = '    <uses-permission android:name="android.permission.INTERNET" />'
           if "android.permission.INTERNET" not in content:
-              content = content.replace("<manifest", "<manifest\\n" + permission, 1)
+              content = content.replace("<manifest", "<manifest\n" + permission, 1)
               manifest.write_text(content)
           print("Android INTERNET permission configured")
           PY
