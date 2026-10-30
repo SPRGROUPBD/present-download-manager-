@@ -1,0 +1,64 @@
+name: Build Android APK and Windows App
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Generate Android project
+        run: flutter create --platforms=android .
+      - name: Get dependencies
+        run: flutter pub get
+      - name: Build release APK
+        run: flutter build apk --release
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Present-Download-Manager-Android-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+
+  windows:
+    name: Build Windows EXE package
+    runs-on: windows-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Generate Windows project
+        run: flutter create --platforms=windows .
+      - name: Get dependencies
+        run: flutter pub get
+      - name: Build release
+        run: flutter build windows --release
+      - name: Package EXE and required runtime files
+        shell: pwsh
+        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath Present-Download-Manager-Windows-x64.zip -Force
+      - name: Upload Windows package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Present-Download-Manager-Windows-x64
+          path: Present-Download-Manager-Windows-x64.zip
+          if-no-files-found: error
