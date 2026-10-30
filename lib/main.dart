@@ -104,7 +104,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
             followRedirects: true,
             receiveTimeout: const Duration(minutes: 0),
             sendTimeout: const Duration(seconds: 30),
-            headers: {'User-Agent': 'PresentDownloadManager/1.2.2'},
+            headers: {'User-Agent': 'PresentDownloadManager/1.2.3'},
           ),
         );
       } on DioException catch (e) {
@@ -271,7 +271,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
             onPressed: () => showAboutDialog(
               context: context,
               applicationName: 'Present Download Manager',
-              applicationVersion: '1.2.2',
+              applicationVersion: '1.2.3',
               children: const [
                 Text('HTTP/HTTPS file downloader with retry and direct video-file URL support.'),
               ],
