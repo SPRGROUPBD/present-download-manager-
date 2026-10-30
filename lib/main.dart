@@ -73,6 +73,14 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
   bool _startAppBannerLoading = false;
   String _startAppAdStatus = 'বিজ্ঞাপন সংযোগ করা হচ্ছে…';
   String? _startAppAdError;
+  String _unityAdStatus = 'Unity Ads চালু হচ্ছে…';
+  String? _unityAdError;
+  String _lastAdEvent = 'এখনো কোনো বিজ্ঞাপন ইভেন্ট পাওয়া যায়নি';
+
+  void _recordAdEvent(String message) {
+    if (!mounted) return;
+    setState(() => _lastAdEvent = '${DateTime.now().toString().substring(0, 19)} — $message');
+  }
 
   @override
   void initState() {
@@ -91,10 +99,14 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
       onComplete: () {
         debugPrint('Unity Ads initialized');
         _unityInitialized = true;
+        if (mounted) setState(() { _unityAdStatus = 'Unity প্রস্তুত — Interstitial লোড হচ্ছে'; _unityAdError = null; });
+        _recordAdEvent('Unity Ads initialized');
         _loadUnityInterstitial();
       },
       onFailed: (error, message) {
         debugPrint('Unity Ads initialization failed: $error $message');
+        if (mounted) setState(() { _unityAdStatus = 'Unity initialization failed'; _unityAdError = '$error: $message'; });
+        _recordAdEvent('Unity initialization failed: $error $message');
         _scheduleUnityRetry();
       },
     );
@@ -109,6 +121,8 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
       // App ID is injected into AndroidManifest by the build workflow.
       await _startAppSdk.setTestAdsEnabled(false);
       debugPrint('Start.io production mode configured; requesting banner...');
+      if (mounted) setState(() => _startAppAdStatus = 'Start.io: Banner request পাঠানো হচ্ছে…');
+      _recordAdEvent('Start.io banner request started');
       final ad = await _startAppSdk.loadBannerAd(
         StartAppBannerType.BANNER,
         onAdImpression: () => debugPrint('Start.io banner impression received'),
@@ -121,12 +135,14 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
       setState(() { _startAppBanner = ad; _startAppAdStatus = 'বিজ্ঞাপন চালু আছে'; _startAppAdError = null; });
       _startAppRetryTimer?.cancel();
       debugPrint('Start.io banner loaded successfully');
+      _recordAdEvent('Start.io banner loaded successfully');
     } catch (error, stackTrace) {
       final message = error.toString();
       debugPrint('Start.io production banner load failed: $message');
       try { debugPrint('Start.io SDK version: ${await _startAppSdk.getSdkVersion()}'); } catch (sdkError) { debugPrint('Start.io SDK version check failed: $sdkError'); }
       debugPrint('$stackTrace');
       if (mounted) setState(() { _startAppAdStatus = 'বিজ্ঞাপন পাওয়া যায়নি — আবার চেষ্টা করুন'; _startAppAdError = message; });
+      _recordAdEvent('Start.io banner failed: $message');
       _scheduleStartAppRetry();
     } finally {
       _startAppBannerLoading = false;
@@ -168,10 +184,14 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
       placementId: _unityInterstitialPlacement,
       onComplete: (placementId) {
         _unityInterstitialReady = true;
+        if (mounted) setState(() { _unityAdStatus = 'Interstitial প্রস্তুত'; _unityAdError = null; });
+        _recordAdEvent('Unity interstitial loaded: $placementId');
         debugPrint('Unity production interstitial loaded: $placementId');
       },
       onFailed: (placementId, error, message) {
         _unityInterstitialReady = false;
+        if (mounted) setState(() { _unityAdStatus = 'Interstitial load failed'; _unityAdError = '$error: $message'; });
+        _recordAdEvent('Unity interstitial load failed: $error $message');
         debugPrint('Unity interstitial load failed for $placementId: $error $message');
         _scheduleUnityRetry();
       },
@@ -183,7 +203,10 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
     _completedDownloadsSinceAd++;
     if (_completedDownloadsSinceAd < 3 ||
         !_unityInitialized ||
-        !_unityInterstitialReady) return;
+        !_unityInterstitialReady) {
+      _recordAdEvent('Unity ad skipped — downloads: $_completedDownloadsSinceAd/3, initialized: $_unityInitialized, loaded: $_unityInterstitialReady');
+      return;
+    }
     _completedDownloadsSinceAd = 0;
     _unityInterstitialReady = false;
     UnityAds.showVideoAd(
@@ -487,6 +510,30 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
                           icon: const Icon(Icons.download),
                           label: const Text('ডাউনলোড শুরু করুন'),
                         ),
+                        if (Platform.isAndroid) ...[
+                          const SizedBox(height: 12),
+                          ExpansionTile(
+                            tilePadding: EdgeInsets.zero,
+                            initiallyExpanded: true,
+                            leading: const Icon(Icons.monitor_heart_outlined),
+                            title: const Text('Ad Status / Diagnostics'),
+                            subtitle: const Text('Start.io ও Unity Ads-এর অবস্থা'),
+                            children: [
+                              Align(alignment: Alignment.centerLeft, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text('Start.io: $_startAppAdStatus', style: const TextStyle(fontWeight: FontWeight.w600)),
+                                if (_startAppAdError != null) SelectableText('Start.io Error: $_startAppAdError', style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12)),
+                                const SizedBox(height: 8),
+                                Text('Unity Ads: $_unityAdStatus', style: const TextStyle(fontWeight: FontWeight.w600)),
+                                if (_unityAdError != null) SelectableText('Unity Error: $_unityAdError', style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12)),
+                                const SizedBox(height: 8),
+                                const Text('সর্বশেষ বিজ্ঞাপন ইভেন্ট:', style: TextStyle(fontWeight: FontWeight.w600)),
+                                SelectableText(_lastAdEvent, style: const TextStyle(fontSize: 12)),
+                                const SizedBox(height: 8),
+                                Text('Unity Interstitial: প্রতি ৩টি সফল ডাউনলোডের পর দেখানোর চেষ্টা হবে।', style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                              ])),
+                            ],
+                          ),
+                        ],
                         const SizedBox(height: 6),
                         const Text(
                           'HTTP/HTTPS ফাইল এবং সরাসরি MP4/WebM/MOV ভিডিও ফাইল ডাউনলোড করুন।',
