@@ -70,22 +70,29 @@ jobs:
 
           manifest = Path("android/app/src/main/AndroidManifest.xml")
           content = manifest.read_text(encoding="utf-8")
-          permission = '    <uses-permission android:name="android.permission.INTERNET" />'
-
-          if "android.permission.INTERNET" not in content:
-              manifest_start = content.find("<manifest")
-              tag_end = content.find(">", manifest_start)
-              if manifest_start < 0 or tag_end < 0:
-                  raise SystemExit("Could not locate the opening manifest tag")
-              content = content[:tag_end + 1] + chr(10) + permission + content[tag_end + 1:]
-              manifest.write_text(content, encoding="utf-8")
+          required_permissions = [
+              '    <uses-permission android:name="android.permission.INTERNET" />',
+              '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />',
+              '    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />',
+          ]
+          manifest_start = content.find("<manifest")
+          tag_end = content.find(">", manifest_start)
+          if manifest_start < 0 or tag_end < 0:
+              raise SystemExit("Could not locate the opening manifest tag")
+          for permission in required_permissions:
+              permission_name = permission.split('"')[1]
+              if permission_name not in content:
+                  content = content[:tag_end + 1] + chr(10) + permission + content[tag_end + 1:]
+                  tag_end += len(permission) + 1
 
           startio_meta = """    <meta-data
               android:name="com.startapp.sdk.APPLICATION_ID"
               android:value="209491822" />"""
           if "com.startapp.sdk.APPLICATION_ID" not in content:
+              if "</application>" not in content:
+                  raise SystemExit("Could not locate application closing tag for Start.io App ID")
               content = content.replace("</application>", startio_meta + "\n    </application>")
-              manifest.write_text(content, encoding="utf-8")
+          manifest.write_text(content, encoding="utf-8")
 
           print("Android INTERNET permission and Start.io App ID configured")
           PY
