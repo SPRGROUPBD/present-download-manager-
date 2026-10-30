@@ -1,10 +1,11 @@
-# Present Download Manager v1.2.0
+# Present Download Manager v1.2.1
 
 Flutter source starter for Windows and Android.
 
 ## Included
 - HTTP/HTTPS URL download
-- Progress display and cancel action
+- Progress display, cancel and retry actions
+- DNS lookup diagnostics with clearer network error messages
 - App-private Downloads folder
 - System light/dark theme
 - GitHub Actions workflow to build Android APK and Windows release package
