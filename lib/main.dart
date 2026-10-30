@@ -105,9 +105,10 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
     _startAppBannerLoading = true;
     if (mounted) setState(() { _startAppAdStatus = 'Start.io বিজ্ঞাপন লোড হচ্ছে…'; _startAppAdError = null; });
     try {
-      // Start.io production mode: test ads are disabled by default.
+      // Explicitly disable Start.io test ads for the production release.
       // App ID is injected into AndroidManifest by the build workflow.
-      debugPrint('Requesting Start.io production banner...');
+      await _startAppSdk.setTestAdsEnabled(false);
+      debugPrint('Start.io production mode configured; requesting banner...');
       final ad = await _startAppSdk.loadBannerAd(
         StartAppBannerType.BANNER,
         onAdImpression: () => debugPrint('Start.io banner impression received'),
@@ -165,10 +166,13 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
     if (!_unityInitialized || !Platform.isAndroid) return;
     UnityAds.load(
       placementId: _unityInterstitialPlacement,
-      onComplete: (_) => _unityInterstitialReady = true,
-      onFailed: (_, error, message) {
+      onComplete: (placementId) {
+        _unityInterstitialReady = true;
+        debugPrint('Unity production interstitial loaded: $placementId');
+      },
+      onFailed: (placementId, error, message) {
         _unityInterstitialReady = false;
-        debugPrint('Unity interstitial load failed: $error $message');
+        debugPrint('Unity interstitial load failed for $placementId: $error $message');
         _scheduleUnityRetry();
       },
     );
@@ -185,10 +189,16 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
     UnityAds.showVideoAd(
       placementId: _unityInterstitialPlacement,
       onStart: (_) => debugPrint('Unity interstitial started'),
-      onComplete: (_) => _loadUnityInterstitial(),
-      onSkipped: (_) => _loadUnityInterstitial(),
-      onFailed: (_, error, message) {
-        debugPrint('Unity interstitial show failed: $error $message');
+      onComplete: (placementId) {
+        debugPrint('Unity interstitial completed: $placementId');
+        _loadUnityInterstitial();
+      },
+      onSkipped: (placementId) {
+        debugPrint('Unity interstitial skipped: $placementId');
+        _loadUnityInterstitial();
+      },
+      onFailed: (placementId, error, message) {
+        debugPrint('Unity interstitial show failed for $placementId: $error $message');
         _loadUnityInterstitial();
       },
     );
@@ -241,7 +251,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
             followRedirects: true,
             receiveTimeout: const Duration(minutes: 0),
             sendTimeout: const Duration(seconds: 30),
-            headers: {'User-Agent': 'PresentDownloadManager/1.3.4'},
+            headers: {'User-Agent': 'PresentDownloadManager/1.3.5'},
           ),
         );
       } on DioException catch (e) {
@@ -411,7 +421,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
             onPressed: () => showAboutDialog(
               context: context,
               applicationName: 'Present Download Manager',
-              applicationVersion: '1.3.4',
+              applicationVersion: '1.3.5',
               children: const [
                 Text('HTTP/HTTPS file downloader with retry and direct video-file URL support.'),
               ],
