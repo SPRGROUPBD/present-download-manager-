@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:startapp_sdk/startapp.dart';
+import 'package:unity_ads_plugin/unity_ads_plugin.dart';
 
 void main() => runApp(const PresentDownloadManagerApp());
 
@@ -59,6 +61,73 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
   final _dio = Dio();
   final List<DownloadItem> _items = [];
   bool _busy = false;
+  static const String _unityGameId = '6215571';
+  static const String _unityInterstitialPlacement = 'Interstitial_Android';
+  final StartAppSdk _startAppSdk = StartAppSdk();
+  StartAppBannerAd? _startAppBanner;
+  bool _unityInitialized = false;
+  bool _unityInterstitialReady = false;
+  int _completedDownloadsSinceAd = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeAds();
+  }
+
+  Future<void> _initializeAds() async {
+    if (!Platform.isAndroid) return;
+    _startAppSdk.setTestAdsEnabled(true);
+    _startAppSdk.loadBannerAd(StartAppBannerType.BANNER).then((ad) {
+      if (!mounted) return;
+      setState(() => _startAppBanner = ad);
+    }).catchError((error) {
+      debugPrint('Start.io banner load failed: $error');
+    });
+    UnityAds.init(
+      gameId: _unityGameId,
+      testMode: true,
+      onComplete: () {
+        _unityInitialized = true;
+        _loadUnityInterstitial();
+      },
+      onFailed: (error, message) {
+        debugPrint('Unity Ads initialization failed: $error $message');
+      },
+    );
+  }
+
+  void _loadUnityInterstitial() {
+    if (!_unityInitialized || !Platform.isAndroid) return;
+    UnityAds.load(
+      placementId: _unityInterstitialPlacement,
+      onComplete: (_) => _unityInterstitialReady = true,
+      onFailed: (_, error, message) {
+        _unityInterstitialReady = false;
+        debugPrint('Unity interstitial load failed: $error $message');
+      },
+    );
+  }
+
+  void _maybeShowUnityInterstitial() {
+    if (!Platform.isAndroid) return;
+    _completedDownloadsSinceAd++;
+    if (_completedDownloadsSinceAd < 3 ||
+        !_unityInitialized ||
+        !_unityInterstitialReady) return;
+    _completedDownloadsSinceAd = 0;
+    _unityInterstitialReady = false;
+    UnityAds.showVideoAd(
+      placementId: _unityInterstitialPlacement,
+      onStart: (_) => debugPrint('Unity interstitial started'),
+      onComplete: (_) => _loadUnityInterstitial(),
+      onSkipped: (_) => _loadUnityInterstitial(),
+      onFailed: (_, error, message) {
+        debugPrint('Unity interstitial show failed: $error $message');
+        _loadUnityInterstitial();
+      },
+    );
+  }
 
   @override
   void dispose() {
@@ -104,7 +173,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
             followRedirects: true,
             receiveTimeout: const Duration(minutes: 0),
             sendTimeout: const Duration(seconds: 30),
-            headers: {'User-Agent': 'PresentDownloadManager/1.2.3'},
+            headers: {'User-Agent': 'PresentDownloadManager/1.3.1'},
           ),
         );
       } on DioException catch (e) {
@@ -204,7 +273,10 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
         item.savedPath = path;
         item.progress = 1;
         item.status = DownloadStatus.completed;
-        if (mounted) _showMessage('ডাউনলোড সম্পন্ন: $safeName');
+        if (mounted) {
+          _showMessage('ডাউনলোড সম্পন্ন: $safeName');
+          _maybeShowUnityInterstitial();
+        }
       }
     } on DioException catch (e) {
       item.status = e.type == DioExceptionType.cancel
@@ -271,7 +343,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
             onPressed: () => showAboutDialog(
               context: context,
               applicationName: 'Present Download Manager',
-              applicationVersion: '1.2.3',
+              applicationVersion: '1.3.1',
               children: const [
                 Text('HTTP/HTTPS file downloader with retry and direct video-file URL support.'),
               ],
@@ -280,6 +352,9 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
           ),
         ],
       ),
+      bottomNavigationBar: Platform.isAndroid && _startAppBanner != null
+          ? SafeArea(child: Center(child: StartAppBanner(_startAppBanner!)))
+          : null,
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 900),
