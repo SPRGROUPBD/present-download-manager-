@@ -85,7 +85,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
 
     UnityAds.init(
       gameId: _unityGameId,
-      testMode: true,
+      testMode: false,
       onComplete: () {
         debugPrint('Unity Ads initialized');
         _unityInitialized = true;
@@ -102,7 +102,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
     if (!Platform.isAndroid || _startAppBannerLoading || _startAppBanner != null) return;
     _startAppBannerLoading = true;
     try {
-      await _startAppSdk.setTestAdsEnabled(true);
+      await _startAppSdk.setTestAdsEnabled(false);
       debugPrint('Start.io test mode enabled');
       final ad = await _startAppSdk.loadBannerAd(
         StartAppBannerType.BANNER,
@@ -138,7 +138,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
       if (!_unityInitialized) {
         UnityAds.init(
           gameId: _unityGameId,
-          testMode: true,
+          testMode: false,
           onComplete: () {
             _unityInitialized = true;
             _loadUnityInterstitial();
@@ -234,7 +234,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
             followRedirects: true,
             receiveTimeout: const Duration(minutes: 0),
             sendTimeout: const Duration(seconds: 30),
-            headers: {'User-Agent': 'PresentDownloadManager/1.3.1'},
+            headers: {'User-Agent': 'PresentDownloadManager/1.3.3'},
           ),
         );
       } on DioException catch (e) {
@@ -404,7 +404,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
             onPressed: () => showAboutDialog(
               context: context,
               applicationName: 'Present Download Manager',
-              applicationVersion: '1.3.1',
+              applicationVersion: '1.3.3',
               children: const [
                 Text('HTTP/HTTPS file downloader with retry and direct video-file URL support.'),
               ],
