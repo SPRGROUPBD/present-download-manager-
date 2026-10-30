@@ -31,13 +31,25 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
+
           manifest = Path("android/app/src/main/AndroidManifest.xml")
-          content = manifest.read_text()
+          content = manifest.read_text(encoding="utf-8")
           permission = '    <uses-permission android:name="android.permission.INTERNET" />'
+
           if "android.permission.INTERNET" not in content:
-              content = content.replace("<manifest", "<manifest\n" + permission, 1)
-              manifest.write_text(content)
+              content, count = re.subn(
+                  r'(<manifest\\b[^>]*>)',
+                  lambda match: match.group(1) + "\\n" + permission,
+                  content,
+                  count=1,
+              )
+              if count != 1:
+                  raise SystemExit("Could not locate the opening <manifest> tag")
+              manifest.write_text(content, encoding="utf-8")
+
           print("Android INTERNET permission configured")
+          print(manifest.read_text(encoding="utf-8"))
           PY
       - name: Get dependencies
         run: flutter pub get
