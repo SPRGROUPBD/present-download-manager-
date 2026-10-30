@@ -1,22 +1,25 @@
-# Present Download Manager v1.4.0
+# Present Download Manager v1.4.1
 
 Flutter download manager for Android and Windows.
 
 ## Features
-- HTTP/HTTPS file downloads with progress, retry and cancel.
-- Add torrent using Magnet URI or a local .torrent file.
-- Native libtorrent engine (DHT/PEX/uTP support depends on the libtorrent engine build and network).
-- Torrent progress, download/upload rate, peer and seed counts.
-- Pause, resume and remove torrent tasks.
-- FDM-inspired download list, categories and General/Progress/Connections detail panel.
+- HTTP/HTTPS file downloads with live progress.
+- Retry failed downloads and cancel active downloads.
+- URL paste support and filename detection.
+- FDM-inspired download list with All, Active, Completed, YouTube, Video and Music categories.
+- General, Progress and Connections detail tabs.
 - Start.io Android banner and Unity Android interstitial integration.
 - GitHub Actions builds Android APK and Windows x64 release ZIP.
+
+## Not included
+Torrent support (Magnet links, .torrent files and libtorrent) has been removed from this release. The previous native libtorrent dependency could not reliably retrieve its required native binaries and caused Android OpenSSL and Windows CMake build failures.
+
+YouTube page downloading is not implemented. Use a direct HTTP/HTTPS media file URL or the platform's own download/save feature.
 
 ## Build requirements
 - Flutter stable with Dart 3.5 or later.
 - Android SDK / JDK 17 for APK.
-- Visual Studio 2022 C++ desktop workload for Windows builds.
-- Internet access during the first native libtorrent build to fetch its platform binaries.
+- Visual Studio 2022 with Desktop development with C++ workload for Windows.
 
 ## Build
 ```bash
@@ -26,18 +29,12 @@ flutter build apk --release
 flutter build windows --release
 ```
 
-## Torrent engine
-The app uses `libtorrent_flutter` 1.9.9, a native libtorrent 2.1.1 wrapper. The selected package release includes platform-native binary download/build integration; CI validates dependency resolution and compilation. The engine stores data in the app Documents/Downloads folder. Torrent downloads need reachable peers/seeds and are not guaranteed to start immediately. Use only content you have the legal right to download and share.
-
 ## Ads
-Ads are Android-only. Start.io banner and Unity interstitial are production-configured with the supplied app/game IDs. Ad fill depends on provider approval, inventory, app configuration, country and network; a successful build does not guarantee an ad impression. Windows ad integration is not included.
-
-## Licensing notice
-`libtorrent_flutter` is licensed under GPL-3.0. Distributing this app with that dependency may require the combined distributed work to comply with GPL-3.0, including providing corresponding source and license notices. Review the dependency license and obtain legal advice before proprietary/commercial distribution.
+Ads are Android-only. Start.io banner and Unity interstitial use the supplied app/game IDs. Ad delivery depends on provider approval, inventory, app configuration, region and network. Windows ad integration is not included.
 
 ## CI artifacts
-GitHub Actions → latest successful run:
-- Android APK artifact: `Present-Download-Manager-Android-APK`
-- Windows package artifact: `Present-Download-Manager-Windows-x64`
+GitHub Actions uploads:
+- `Present-Download-Manager-Android-APK`
+- `Present-Download-Manager-Windows-x64`
 
 Repository: https://github.com/SPRGROUPBD/present-download-manager-
