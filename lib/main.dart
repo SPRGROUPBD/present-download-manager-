@@ -837,7 +837,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
             title: Text(t.name.isEmpty ? 'Fetching torrent metadata…' : t.name, maxLines: 1, overflow: TextOverflow.ellipsis),
             subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('${t.state.label} • ${(t.progress * 100).toStringAsFixed(1)}% • ↓ ${_formatRate(t.downloadRate)} • ↑ ${_formatRate(t.uploadRate)}'),
-              const SizedBox(height: 5), LinearProgressIndicator(value: t.progress.clamp(0.0, 1.0)),
+              const SizedBox(height: 5), LinearProgressIndicator(value: t.progress.clamp(0.0, 1.0).toDouble()),
               Text('Peers: ${t.numPeers} • Seeds: ${t.numSeeds} • ${_size(t.totalDone)} / ${_size(t.totalWanted)}', style: const TextStyle(fontSize: 11)),
             ]),
             trailing: PopupMenuButton<String>(onSelected: (v) {
