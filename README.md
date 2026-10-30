@@ -27,7 +27,7 @@ flutter build windows --release
 ```
 
 ## Torrent engine
-The app uses `libtorrent_flutter` 2.0.0, a native libtorrent 2.1.1 wrapper. First build downloads native binaries (the package documents approximately 10–80 MB). The engine stores data in the app Documents/Downloads folder. Torrent downloads need reachable peers/seeds and are not guaranteed to start immediately. Use only content you have the legal right to download and share.
+The app uses `libtorrent_flutter` 1.9.9, a native libtorrent 2.1.1 wrapper. The selected package release includes platform-native binary download/build integration; CI validates dependency resolution and compilation. The engine stores data in the app Documents/Downloads folder. Torrent downloads need reachable peers/seeds and are not guaranteed to start immediately. Use only content you have the legal right to download and share.
 
 ## Ads
 Ads are Android-only. Start.io banner and Unity interstitial are production-configured with the supplied app/game IDs. Ad fill depends on provider approval, inventory, app configuration, country and network; a successful build does not guarantee an ad impression. Windows ad integration is not included.
