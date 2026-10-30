@@ -104,8 +104,8 @@ jobs:
               raise SystemExit("Start.io Android Gradle file not found in Pub cache")
           for gradle_file in candidates:
               content = gradle_file.read_text(encoding="utf-8")
-              updated, count = re.subn(r"(compileSdkVersion\\s+|compileSdk\\s*=\\s*)\\d+", r"\\g<1>36", content)
-              if count == 0 and not re.search(r"compileSdkVersion\\s+36|compileSdk\\s*=\\s*36", content):
+              updated, count = re.subn(r"(compileSdkVersion\s+|compileSdk\s*=\s*)\\d+", r"\g<1>36", content)
+              if count == 0 and not re.search(r"compileSdkVersion\s+36|compileSdk\s*=\s*36", content):
                   raise SystemExit(f"Could not safely set compileSdk in {gradle_file}")
               if count:
                   gradle_file.write_text(updated, encoding="utf-8")
