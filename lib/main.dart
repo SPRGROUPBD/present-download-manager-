@@ -71,6 +71,8 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
   Timer? _startAppRetryTimer;
   Timer? _unityRetryTimer;
   bool _startAppBannerLoading = false;
+  String _startAppAdStatus = 'বিজ্ঞাপন সংযোগ করা হচ্ছে…';
+  String? _startAppAdError;
 
   @override
   void initState() {
@@ -101,9 +103,10 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
   Future<void> _loadStartAppBanner() async {
     if (!Platform.isAndroid || _startAppBannerLoading || _startAppBanner != null) return;
     _startAppBannerLoading = true;
+    if (mounted) setState(() { _startAppAdStatus = 'Start.io বিজ্ঞাপন লোড হচ্ছে…'; _startAppAdError = null; });
     try {
-      // Production is the SDK default. Do not toggle test mode at runtime.
-      // The Start.io App ID is injected into AndroidManifest by the build workflow.
+      // Start.io production mode: test ads are disabled by default.
+      // App ID is injected into AndroidManifest by the build workflow.
       debugPrint('Requesting Start.io production banner...');
       final ad = await _startAppSdk.loadBannerAd(
         StartAppBannerType.BANNER,
@@ -114,13 +117,15 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
         ad.dispose();
         return;
       }
-      setState(() => _startAppBanner = ad);
+      setState(() { _startAppBanner = ad; _startAppAdStatus = 'বিজ্ঞাপন চালু আছে'; _startAppAdError = null; });
       _startAppRetryTimer?.cancel();
       debugPrint('Start.io banner loaded successfully');
     } catch (error, stackTrace) {
-      debugPrint('Start.io production banner load failed: $error');
-      debugPrint('Start.io SDK version: ${await _startAppSdk.getSdkVersion()}');
+      final message = error.toString();
+      debugPrint('Start.io production banner load failed: $message');
+      try { debugPrint('Start.io SDK version: ${await _startAppSdk.getSdkVersion()}'); } catch (sdkError) { debugPrint('Start.io SDK version check failed: $sdkError'); }
       debugPrint('$stackTrace');
+      if (mounted) setState(() { _startAppAdStatus = 'বিজ্ঞাপন পাওয়া যায়নি — আবার চেষ্টা করুন'; _startAppAdError = message; });
       _scheduleStartAppRetry();
     } finally {
       _startAppBannerLoading = false;
@@ -130,7 +135,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
   void _scheduleStartAppRetry() {
     if (!mounted || _startAppBanner != null) return;
     _startAppRetryTimer?.cancel();
-    _startAppRetryTimer = Timer(const Duration(seconds: 45), _loadStartAppBanner);
+    _startAppRetryTimer = Timer(const Duration(seconds: 30), _loadStartAppBanner);
   }
 
   void _scheduleUnityRetry() {
@@ -236,7 +241,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
             followRedirects: true,
             receiveTimeout: const Duration(minutes: 0),
             sendTimeout: const Duration(seconds: 30),
-            headers: {'User-Agent': 'PresentDownloadManager/1.3.3'},
+            headers: {'User-Agent': 'PresentDownloadManager/1.3.4'},
           ),
         );
       } on DioException catch (e) {
@@ -406,7 +411,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
             onPressed: () => showAboutDialog(
               context: context,
               applicationName: 'Present Download Manager',
-              applicationVersion: '1.3.3',
+              applicationVersion: '1.3.4',
               children: const [
                 Text('HTTP/HTTPS file downloader with retry and direct video-file URL support.'),
               ],
@@ -415,11 +420,27 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
           ),
         ],
       ),
-      bottomNavigationBar: Platform.isAndroid && _startAppBanner != null
+      bottomNavigationBar: Platform.isAndroid
           ? SafeArea(
-              child: SizedBox(
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 56),
                 width: double.infinity,
-                child: Center(child: StartAppBanner(_startAppBanner!)),
+                alignment: Alignment.center,
+                child: _startAppBanner != null
+                    ? StartAppBanner(_startAppBanner!)
+                    : Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.ads_click, size: 16),
+                            const SizedBox(width: 8),
+                            Flexible(child: Text(_startAppAdStatus, style: const TextStyle(fontSize: 12), textAlign: TextAlign.center)),
+                            const SizedBox(width: 8),
+                            TextButton(onPressed: _startAppBannerLoading ? null : _loadStartAppBanner, child: const Text('Retry')),
+                          ],
+                        ),
+                      ),
               ),
             )
           : null,
