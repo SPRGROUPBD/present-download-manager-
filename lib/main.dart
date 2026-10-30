@@ -68,6 +68,9 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
   bool _unityInitialized = false;
   bool _unityInterstitialReady = false;
   int _completedDownloadsSinceAd = 0;
+  Timer? _startAppRetryTimer;
+  Timer? _unityRetryTimer;
+  bool _startAppBannerLoading = false;
 
   @override
   void initState() {
@@ -77,7 +80,27 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
 
   Future<void> _initializeAds() async {
     if (!Platform.isAndroid) return;
-    // Wait until test mode is configured before requesting the first ad.
+
+    await _loadStartAppBanner();
+
+    UnityAds.init(
+      gameId: _unityGameId,
+      testMode: true,
+      onComplete: () {
+        debugPrint('Unity Ads initialized');
+        _unityInitialized = true;
+        _loadUnityInterstitial();
+      },
+      onFailed: (error, message) {
+        debugPrint('Unity Ads initialization failed: $error $message');
+        _scheduleUnityRetry();
+      },
+    );
+  }
+
+  Future<void> _loadStartAppBanner() async {
+    if (!Platform.isAndroid || _startAppBannerLoading || _startAppBanner != null) return;
+    _startAppBannerLoading = true;
     try {
       await _startAppSdk.setTestAdsEnabled(true);
       debugPrint('Start.io test mode enabled');
@@ -91,22 +114,44 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
         return;
       }
       setState(() => _startAppBanner = ad);
+      _startAppRetryTimer?.cancel();
       debugPrint('Start.io banner loaded successfully');
     } catch (error, stackTrace) {
       debugPrint('Start.io banner load failed: $error');
       debugPrint('$stackTrace');
+      _scheduleStartAppRetry();
+    } finally {
+      _startAppBannerLoading = false;
     }
-    UnityAds.init(
-      gameId: _unityGameId,
-      testMode: true,
-      onComplete: () {
-        _unityInitialized = true;
+  }
+
+  void _scheduleStartAppRetry() {
+    if (!mounted || _startAppBanner != null) return;
+    _startAppRetryTimer?.cancel();
+    _startAppRetryTimer = Timer(const Duration(seconds: 45), _loadStartAppBanner);
+  }
+
+  void _scheduleUnityRetry() {
+    if (!mounted || !Platform.isAndroid) return;
+    _unityRetryTimer?.cancel();
+    _unityRetryTimer = Timer(const Duration(seconds: 30), () {
+      if (!_unityInitialized) {
+        UnityAds.init(
+          gameId: _unityGameId,
+          testMode: true,
+          onComplete: () {
+            _unityInitialized = true;
+            _loadUnityInterstitial();
+          },
+          onFailed: (error, message) {
+            debugPrint('Unity Ads retry initialization failed: $error $message');
+            _scheduleUnityRetry();
+          },
+        );
+      } else {
         _loadUnityInterstitial();
-      },
-      onFailed: (error, message) {
-        debugPrint('Unity Ads initialization failed: $error $message');
-      },
-    );
+      }
+    });
   }
 
   void _loadUnityInterstitial() {
@@ -117,6 +162,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
       onFailed: (_, error, message) {
         _unityInterstitialReady = false;
         debugPrint('Unity interstitial load failed: $error $message');
+        _scheduleUnityRetry();
       },
     );
   }
@@ -143,6 +189,9 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
 
   @override
   void dispose() {
+    _startAppRetryTimer?.cancel();
+    _unityRetryTimer?.cancel();
+    _startAppBanner?.dispose();
     _urlController.dispose();
     for (final item in _items) {
       item.cancelToken?.cancel('Application closed');
