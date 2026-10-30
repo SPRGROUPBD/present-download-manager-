@@ -1,7 +1,7 @@
 name: present_download_manager
 description: Present Download Manager - cross-platform download manager starter.
 publish_to: 'none'
-version: 1.2.1+4
+version: 1.2.2+5
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
