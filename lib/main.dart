@@ -88,39 +88,73 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
       _showMessage('একটি সঠিক HTTP/HTTPS ডাউনলোড লিংক দিন।');
       return;
     }
-
-    final item = DownloadItem(url: url, fileName: _fileNameFromUrl(url))
-      ..cancelToken = CancelToken();
+    final item = DownloadItem(url: url, fileName: _fileNameFromUrl(url));
     setState(() {
       _items.insert(0, item);
-      _busy = true;
       _urlController.clear();
     });
+    await _downloadItem(item);
+  }
 
+  Future<void> _retryDownload(DownloadItem item) async {
+    if (_busy || item.status == DownloadStatus.downloading) return;
+    setState(() {
+      item.status = DownloadStatus.downloading;
+      item.progress = 0;
+      item.received = 0;
+      item.total = 0;
+      item.error = null;
+      item.savedPath = null;
+    });
+    await _downloadItem(item);
+  }
+
+  Future<void> _downloadItem(DownloadItem item) async {
+    if (_busy) return;
+    _busy = true;
+    item.cancelToken = CancelToken();
+    if (mounted) setState(() {});
+    String? path;
     try {
+      final uri = Uri.parse(item.url);
+      // Resolve the host first so DNS failures can be explained clearly.
+      try {
+        await InternetAddress.lookup(uri.host)
+            .timeout(const Duration(seconds: 12));
+      } on SocketException {
+        throw Exception('DNS সমস্যার কারণে ${uri.host} সার্ভার খুঁজে পাওয়া যাচ্ছে না। ইন্টারনেট/DNS পরীক্ষা করে আবার চেষ্টা করুন।');
+      } on TimeoutException {
+        throw Exception('সার্ভারের DNS উত্তর দিতে দেরি হচ্ছে। নেটওয়ার্ক পরীক্ষা করে আবার চেষ্টা করুন।');
+      }
+
       final directory = await getApplicationDocumentsDirectory();
       final downloads = Directory('${directory.path}${Platform.pathSeparator}Downloads');
       if (!await downloads.exists()) {
         await downloads.create(recursive: true);
       }
       final safeName = item.fileName.replaceAll(RegExp(r'[<>:"/\\\\|?*]'), '_');
-      final path = '${downloads.path}${Platform.pathSeparator}$safeName';
+      path = '${downloads.path}${Platform.pathSeparator}$safeName';
       final response = await _dio.get<ResponseBody>(
-        url,
+        item.url,
         cancelToken: item.cancelToken,
         options: Options(
           responseType: ResponseType.stream,
           followRedirects: true,
           receiveTimeout: const Duration(minutes: 0),
+          sendTimeout: const Duration(seconds: 30),
+          headers: {'User-Agent': 'PresentDownloadManager/1.2.1'},
         ),
       );
       final body = response.data;
       if (body == null) throw Exception('সার্ভার থেকে কোনো ডেটা পাওয়া যায়নি।');
-      item.total = int.tryParse(response.headers.value(Headers.contentLengthHeader) ?? '') ?? 0;
+      item.total = int.tryParse(
+        response.headers.value(Headers.contentLengthHeader) ?? '',
+      ) ?? 0;
       final file = File(path);
       final sink = file.openWrite();
       try {
         await for (final chunk in body.stream) {
+          if (item.cancelToken?.isCancelled == true) break;
           sink.add(chunk);
           item.received += chunk.length;
           if (mounted) {
@@ -135,22 +169,40 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
         await sink.flush();
         await sink.close();
       }
-      item.savedPath = path;
-      item.progress = 1;
-      item.status = DownloadStatus.completed;
-      if (mounted) _showMessage('ডাউনলোড সম্পন্ন: $safeName');
+      if (item.cancelToken?.isCancelled == true) {
+        if (await file.exists()) await file.delete();
+        item.status = DownloadStatus.cancelled;
+      } else {
+        item.savedPath = path;
+        item.progress = 1;
+        item.status = DownloadStatus.completed;
+        if (mounted) _showMessage('ডাউনলোড সম্পন্ন: $safeName');
+      }
     } on DioException catch (e) {
       item.status = e.type == DioExceptionType.cancel
           ? DownloadStatus.cancelled
           : DownloadStatus.failed;
-      item.error = e.message;
+      final message = e.message ?? 'নেটওয়ার্ক সংযোগ ব্যর্থ হয়েছে।';
+      item.error = message.toLowerCase().contains('failed host lookup')
+          ? 'DNS সমস্যা: সার্ভারের ঠিকানা পাওয়া যায়নি। Internet/DNS পরীক্ষা করে Retry চাপুন।'
+          : 'সংযোগ সমস্যা: $message';
+      if (path != null) {
+        final partial = File(path);
+        if (await partial.exists()) await partial.delete();
+      }
     } catch (e) {
-      item.status = DownloadStatus.failed;
-      item.error = e.toString();
+      item.status = item.cancelToken?.isCancelled == true
+          ? DownloadStatus.cancelled
+          : DownloadStatus.failed;
+      item.error = e.toString().replaceFirst('Exception: ', '');
+      if (path != null) {
+        final partial = File(path);
+        if (await partial.exists()) await partial.delete();
+      }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      _busy = false;
+      if (mounted) setState(() {});
     }
-    if (mounted) setState(() {});
   }
 
   void _cancel(DownloadItem item) {
@@ -191,7 +243,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
             onPressed: () => showAboutDialog(
               context: context,
               applicationName: 'Present Download Manager',
-              applicationVersion: '1.2.0',
+              applicationVersion: '1.2.1',
               children: const [
                 Text('Cross-platform HTTP/HTTPS download manager starter.'),
               ],
@@ -283,6 +335,13 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
                                             onPressed: () => _cancel(item),
                                             icon: const Icon(Icons.close),
                                             label: const Text('বাতিল'),
+                                          )
+                                        else if (item.status == DownloadStatus.failed ||
+                                            item.status == DownloadStatus.cancelled)
+                                          TextButton.icon(
+                                            onPressed: _busy ? null : () => _retryDownload(item),
+                                            icon: const Icon(Icons.refresh),
+                                            label: const Text('আবার চেষ্টা'),
                                           ),
                                       ],
                                     ),
