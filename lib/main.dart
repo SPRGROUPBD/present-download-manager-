@@ -81,7 +81,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
   }
 
   bool _isSocialVideoPage(Uri uri) {
-    final host = uri.host.toLowerCase().replaceFirst(RegExp(r'^www\\.'), '');
+    final host = uri.host.toLowerCase().replaceFirst(RegExp(r'^www\.'), '');
     return host == 'youtube.com' || host.endsWith('.youtube.com') ||
         host == 'youtu.be' || host == 'facebook.com' ||
         host.endsWith('.facebook.com') || host == 'fb.watch' ||
