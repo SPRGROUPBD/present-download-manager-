@@ -77,13 +77,25 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
 
   Future<void> _initializeAds() async {
     if (!Platform.isAndroid) return;
-    _startAppSdk.setTestAdsEnabled(true);
-    _startAppSdk.loadBannerAd(StartAppBannerType.BANNER).then((ad) {
-      if (!mounted) return;
+    // Wait until test mode is configured before requesting the first ad.
+    try {
+      await _startAppSdk.setTestAdsEnabled(true);
+      debugPrint('Start.io test mode enabled');
+      final ad = await _startAppSdk.loadBannerAd(
+        StartAppBannerType.BANNER,
+        onAdImpression: () => debugPrint('Start.io banner impression received'),
+        onAdClicked: () => debugPrint('Start.io banner clicked'),
+      );
+      if (!mounted) {
+        ad.dispose();
+        return;
+      }
       setState(() => _startAppBanner = ad);
-    }).catchError((error) {
+      debugPrint('Start.io banner loaded successfully');
+    } catch (error, stackTrace) {
       debugPrint('Start.io banner load failed: $error');
-    });
+      debugPrint('$stackTrace');
+    }
     UnityAds.init(
       gameId: _unityGameId,
       testMode: true,
