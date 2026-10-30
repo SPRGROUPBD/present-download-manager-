@@ -26,6 +26,15 @@ jobs:
           channel: stable
       - name: Generate Android project
         run: flutter create --platforms=android .
+      - name: Ensure Android Internet permission
+        shell: bash
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          if ! grep -q 'android.permission.INTERNET' "$MANIFEST"; then
+            sed -i '/<manifest/a\\    <uses-permission android:name="android.permission.INTERNET"/>' "$MANIFEST"
+          fi
+          echo "Android INTERNET permission:"
+          grep 'android.permission.INTERNET' "$MANIFEST"
       - name: Get dependencies
         run: flutter pub get
       - name: Build release APK
