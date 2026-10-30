@@ -44,7 +44,14 @@ jobs:
               content = content[:tag_end + 1] + chr(10) + permission + content[tag_end + 1:]
               manifest.write_text(content, encoding="utf-8")
 
-          print("Android INTERNET permission configured")
+          startio_meta = """    <meta-data
+              android:name="com.startapp.sdk.APPLICATION_ID"
+              android:value="209491822" />"""
+          if "com.startapp.sdk.APPLICATION_ID" not in content:
+              content = content.replace("</application>", startio_meta + "\\n    </application>")
+              manifest.write_text(content, encoding="utf-8")
+
+          print("Android INTERNET permission and Start.io App ID configured")
           PY
       - name: Get dependencies
         run: flutter pub get
