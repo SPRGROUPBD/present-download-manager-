@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:startapp_sdk/startapp.dart';
 import 'package:unity_ads_plugin/unity_ads_plugin.dart';
@@ -291,6 +292,22 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
     throw lastError ?? Exception('নেটওয়ার্ক সংযোগ ব্যর্থ হয়েছে।');
   }
 
+  Future<void> _pasteUrl() async {
+    try {
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      final value = data?.text?.trim() ?? '';
+      if (value.isEmpty) {
+        _showMessage('Clipboard-এ কোনো URL পাওয়া যায়নি। আগে লিংক Copy করুন।');
+        return;
+      }
+      _urlController.text = value;
+      _urlController.selection = TextSelection.collapsed(offset: value.length);
+      _showMessage('URL পেস্ট হয়েছে। এখন Download চাপুন।');
+    } catch (e) {
+      _showMessage('Paste করা যায়নি: $e');
+    }
+  }
+
   Future<void> _startDownload() async {
     final url = _urlController.text.trim();
     final uri = Uri.tryParse(url);
@@ -493,28 +510,49 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
                       children: [
                         const Text('নতুন ডাউনলোড', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 10),
-                        TextField(
-                          controller: _urlController,
-                          keyboardType: TextInputType.url,
-                          decoration: const InputDecoration(
-                            hintText: 'https://example.com/file.zip',
-                            labelText: 'Download / Video URL',
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.link),
-                          ),
-                          onSubmitted: (_) => _startDownload(),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _urlController,
+                                keyboardType: TextInputType.url,
+                                minLines: 1,
+                                maxLines: 2,
+                                decoration: const InputDecoration(
+                                  hintText: 'https://example.com/file.zip',
+                                  labelText: 'এখানে Download URL পেস্ট করুন',
+                                  border: OutlineInputBorder(),
+                                  prefixIcon: Icon(Icons.link),
+                                ),
+                                onSubmitted: (_) => _startDownload(),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            SizedBox(
+                              height: 56,
+                              child: OutlinedButton.icon(
+                                onPressed: _pasteUrl,
+                                icon: const Icon(Icons.content_paste, size: 18),
+                                label: const Text('Paste'),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 10),
-                        FilledButton.icon(
-                          onPressed: _busy ? null : _startDownload,
-                          icon: const Icon(Icons.download),
-                          label: const Text('ডাউনলোড শুরু করুন'),
+                        SizedBox(
+                          height: 48,
+                          child: FilledButton.icon(
+                            onPressed: _busy ? null : _startDownload,
+                            icon: const Icon(Icons.download),
+                            label: const Text('Download Now'),
+                          ),
                         ),
                         if (Platform.isAndroid) ...[
                           const SizedBox(height: 12),
                           ExpansionTile(
                             tilePadding: EdgeInsets.zero,
-                            initiallyExpanded: true,
+                            initiallyExpanded: false,
                             leading: const Icon(Icons.monitor_heart_outlined),
                             title: const Text('Ad Status / Diagnostics'),
                             subtitle: const Text('Start.io ও Unity Ads-এর অবস্থা'),
