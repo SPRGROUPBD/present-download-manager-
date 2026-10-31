@@ -64,6 +64,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
   bool _busy = false;
   static const String _unityGameId = '6215571';
   static const String _unityInterstitialPlacement = 'Interstitial_Android';
+  static const String _unityBannerPlacement = 'Banner_Android';
   final StartAppSdk _startAppSdk = StartAppSdk();
   StartAppBannerAd? _startAppBanner;
   bool _unityInitialized = false;
@@ -472,7 +473,7 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
             onPressed: () => showAboutDialog(
               context: context,
               applicationName: 'Present Download Manager',
-              applicationVersion: '1.3.7',
+              applicationVersion: '1.4.2',
               children: const [Text('Cross-platform file download manager.')],
             ),
           ),
@@ -641,7 +642,30 @@ class _DownloadHomePageState extends State<DownloadHomePage> {
             ]),
           ),
           if (Platform.isAndroid && _startAppBanner != null)
-            SafeArea(child: SizedBox(height: 50, child: Center(child: StartAppBanner(_startAppBanner!)))),
+            SafeArea(child: SizedBox(height: 50, child: Center(child: StartAppBanner(_startAppBanner!))))
+          else if (Platform.isAndroid && _unityInitialized)
+            SafeArea(
+              child: SizedBox(
+                height: 50,
+                child: Center(
+                  child: UnityBannerAd(
+                    placementId: _unityBannerPlacement,
+                    onLoad: (placementId) {
+                      debugPrint('Unity banner loaded: $placementId');
+                      if (mounted) setState(() { _unityAdStatus = 'Banner ও Interstitial প্রস্তুত'; _unityAdError = null; });
+                      _recordAdEvent('Unity banner loaded: $placementId');
+                    },
+                    onClick: (placementId) => debugPrint('Unity banner clicked: $placementId'),
+                    onShown: (placementId) => debugPrint('Unity banner shown: $placementId'),
+                    onFailed: (placementId, error, message) {
+                      debugPrint('Unity banner failed for $placementId: $error $message');
+                      if (mounted) setState(() { _unityAdStatus = 'Banner load failed'; _unityAdError = '$error: $message'; });
+                      _recordAdEvent('Unity banner failed: $placementId — $error: $message');
+                    },
+                  ),
+                ),
+              ),
+            ),
           Container(
             height: 30,
             color: const Color(0xFFE8F5E9),
